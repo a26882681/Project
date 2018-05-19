@@ -1,0 +1,107 @@
+﻿<Page
+    x:Class="SDKTemplate.MainPage1"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:SDKTemplate"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:charts="using:CrossPieCharts.UWP.PieCharts"
+    mc:Ignorable="d" Loaded="Page_Loaded" Unloaded="Page_Unloaded">
+    <Page.Resources>
+        <DataTemplate x:Key="AttributeTemplate" x:DataType="local:BluetoothLEAttributeDisplay">
+            <Grid Margin="5">
+                
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*" MinWidth="100"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="1" Margin="5">
+                    <StackPanel>
+                        
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{x:Bind Name}" Style="{StaticResource ListItemTextStyle}" FontWeight="Bold" TextWrapping="WrapWholeWords"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{x:Bind AttributeDisplayType}" Margin="10,0,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+    <ScrollViewer Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="12,10,12,12">
+        <StackPanel>
+            <TextBlock Text="Description:" Style="{StaticResource SampleHeaderTextStyle}"/>
+            <TextBlock Style="{StaticResource ScenarioDescriptionTextStyle}" Text="Query services from GATT server"/>
+            <TextBlock TextWrapping="Wrap" Margin="0,10,0,0">
+                This scenario connects to the Bluetooth Low Energy device
+                selected in the "Discover GATT Servers" scenario
+                and communicates with the device.
+            </TextBlock>
+            <TextBlock Style="{StaticResource ListItemTextStyle}" TextWrapping="Wrap" Margin="0,10,0,0">
+                Selected device: <Run Text="{x:Bind rootPage.SelectedBleDeviceName}" FontWeight="Bold"/>
+            </TextBlock>
+            <Button x:Name="ConnectButton" Content="Connect" Click="{x:Bind ConnectButton_Click}" Margin="0,10,0,0"/>
+            <ComboBox x:Name="ServiceList" Margin="0,10,0,0" PlaceholderText="Choose a service" Visibility="Collapsed"
+                      ItemsSource="{x:Bind ServiceCollection}" DisplayMemberPath="Name"
+                      SelectionChanged="{x:Bind ServiceList_SelectionChanged}"/>
+            <ComboBox x:Name="CharacteristicList" Margin="0,10,0,0" PlaceholderText="Choose a characteristic" Visibility="Collapsed"
+                      ItemsSource="{x:Bind CharacteristicCollection}"  DisplayMemberPath="Name"
+                      SelectionChanged="{x:Bind CharacteristicList_SelectionChanged}" />
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="CharacteristicReadButton" Content="Read Value" Click="{x:Bind CharacteristicReadButton_Click}"
+                        Visibility="Collapsed" Margin="0,10,10,0"/>
+                <Button x:Name="ValueChangedSubscribeToggle" Content="Subscribe to value changes" Click="{x:Bind ValueChangedSubscribeToggle_Click}"
+                        Visibility="Collapsed" Margin="0,10,10,0"/>
+            </StackPanel>
+            <TextBlock x:Name="CharacteristicLatestValue" Margin="0,10,0,0"/>
+            <ScrollViewer ZoomMode="Enabled" MaxZoomFactor="10"
+              HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Visible"
+              Height="200" Width="200" HorizontalAlignment="Left">
+                <StackPanel>
+                    <TextBlock x:Name="Read_Watch" Margin="0,10,0,0" Text=""/>
+                    <!-- more page content -->
+                </StackPanel>
+            </ScrollViewer>
+
+            <TextBox x:Name="WriteInputValue" Text="connect F8-CE-C5-80-79-49;" 
+                                 Height="30" 
+                                 MinWidth="238"
+                                 MaxWidth="238"
+                                 TextWrapping="Wrap"
+                                 Margin="10,30,0,0"
+                                 VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                                 />
+
+            <charts:PieChart x:Name="HR_PieChart"
+                             Percentage="50"
+                             Radius="50"                            
+                             Segment360Color="Gray"
+                             SegmentColor="LightGreen"
+                             StrokeThickness="10" HorizontalAlignment="Left" />
+
+            <TextBlock x:Name="HR"
+                       Text="70%"
+                       Margin="40,0"
+                       VerticalAlignment="Center"
+                       HorizontalAlignment="Left"
+                       FontWeight="Bold"
+                       FontSize="25"
+                       Foreground="Gray" />
+            <Button x:Name="Send" Content="Send" Click="{x:Bind SendButton_Click}" Margin="0,10,0,0"/>
+            <TextBlock x:Name="Serial_State" Text="手錶連線狀態：" Margin="0,10,0,0"/>
+            <ProgressBar x:Name="HR_ProgressBar" Value="70" Maximum="130" Width="230" Minimum="0" Height="30"  >
+
+            </ProgressBar>
+            <TextBlock x:Name="txtPortData" FontSize="11" HorizontalAlignment="Center" Margin="0,20,0,0">No data yet</TextBlock>
+            <TextBlock x:Name="txtStatus" FontSize="24" HorizontalAlignment="Center" Margin="0,20,0,0">No data yet</TextBlock>
+            <StackPanel Orientation="Horizontal" Margin="0,30" >
+                
+
+            </StackPanel>
+            
+        </StackPanel>
+        
+    </ScrollViewer>
+
+</Page>

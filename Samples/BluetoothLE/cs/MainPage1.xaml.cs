@@ -27,7 +27,7 @@ using Windows.UI.Popups;
 using System.Threading;
 using Windows.System.Threading;
 using System.Text.RegularExpressions;
-
+using MySql.Data.MySqlClient;
 
 // created using this example https://github.com/ms-iot/samples/tree/develop/SerialSample/
 
@@ -48,10 +48,13 @@ namespace SDKTemplate
         private GattPresentationFormat presentationFormat;
 
         private CancellationTokenSource ReadCancellationTokenSource;
-        private SerialDevice Watch_serialDevice, Arduino_serialDevice;
-        private SerialDevice serialPort = null;
+        private SerialDevice Arduino_serialDevice=null;
+        private SerialDevice Watch_serialDevice = null;
+        string[] instruction = { "connect F8-CE-C5-80-79-49;", "disconnect;", "cmd.pair" , "menu.g", "icon.g", "get.g", "get.hr", "mode.g01", "mode.g02", "mode.g03", "mode.g04" };
         DataWriter dataWriteObject = null;
         DataReader dataReaderObject = null;
+        DBConnect db = new DBConnect();
+        TimeSpan delay = TimeSpan.FromSeconds(1);
 
         string Nowtime;
         #region Error Codes
@@ -62,8 +65,8 @@ namespace SDKTemplate
         {
             InitializeComponent();
             rootPage.SelectedBleDeviceId = "BluetoothLE#BluetoothLE5c:f3:70:8c:57:02-d1:82:80:8d:13:18";
-            rootPage.SelectedBleDeviceName = "ATBF-1000";
-            ConnectButton_Click();
+            rootPage.SelectedBleDeviceName = "ATBF-1000";          
+            
         }
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
@@ -85,16 +88,21 @@ namespace SDKTemplate
 
         private async void SendButton_Click()
         {
-            string[] instruction= { "connect F8-CE-C5-80-79-49;","disconnect;", "menu.g","icon.g","get.g","get.hr","mode.g01", "mode.g02", "mode.g03", "mode.g04" };
             if(int.Parse(WriteInputValue.Text)<2) await SendToPort(instruction[int.Parse(WriteInputValue.Text)]);
             else await SendToPort("pkt " + instruction[int.Parse(WriteInputValue.Text)] + ",;" );
-            
+
+            DateTime myDate = DateTime.Now;
+            string myDateString = myDate.ToString("yyyy-MM-dd HH:mm:ss");
+            Random crandom = new Random();
+            int y;
+            y = crandom.Next(70, 140);
+            string varString = Convert.ToString(y);
+            db.Insert(myDateString, varString);
         }
 
 
         private async void Page_Loaded(object sender, RoutedEventArgs e)
         {
-
             string qFilter = SerialDevice.GetDeviceSelector("COM3");
             DeviceInformationCollection devices = await DeviceInformation.FindAllAsync(qFilter);
 
@@ -105,31 +113,27 @@ namespace SDKTemplate
             }
 
             ReadCancellationTokenSource = new CancellationTokenSource();
-            while (true)
+            while (Watch_serialDevice!=null)
             {
-                await Listen();
+                await Listen();                
             }
-        }
-        private async void Watch_State()
-        {
-            await SendToPort("pkt cmd.pair,;");
-            Nowtime = Regex.Replace(DateTime.Now.ToString("yyyy-MM-dd HH:mm"), @"[^\d]", String.Empty);
-            await SendToPort("pkt T=" + Nowtime + ",;");           
+
         }
 
         private async Task OpenPort(string deviceId)
         {
-            serialPort = await SerialDevice.FromIdAsync(deviceId);
+            Watch_serialDevice = await SerialDevice.FromIdAsync(deviceId);
 
-            if (serialPort != null)
+            if (Watch_serialDevice != null)
             {
-                serialPort.WriteTimeout = TimeSpan.FromMilliseconds(1000);
-                serialPort.ReadTimeout = TimeSpan.FromMilliseconds(1000);
-                serialPort.BaudRate = 115200;
-                serialPort.Parity = SerialParity.None;
-                serialPort.StopBits = SerialStopBitCount.One;
-                serialPort.DataBits = 8;               
+                Watch_serialDevice.WriteTimeout = TimeSpan.FromMilliseconds(1000);
+                Watch_serialDevice.ReadTimeout = TimeSpan.FromMilliseconds(1000);
+                Watch_serialDevice.BaudRate = 115200;
+                Watch_serialDevice.Parity = SerialParity.None;
+                Watch_serialDevice.StopBits = SerialStopBitCount.One;
+                Watch_serialDevice.DataBits = 8;               
                 txtStatus.Text = "Serial port configured successfully";
+                await SendToPort("pkt " + instruction[2] + ",;");
             }
         }
 
@@ -137,9 +141,9 @@ namespace SDKTemplate
         {
             try
             {
-                if (serialPort != null)
+                if (Watch_serialDevice != null)
                 {
-                    dataReaderObject = new DataReader(serialPort.InputStream);
+                    dataReaderObject = new DataReader(Watch_serialDevice.InputStream);
                     await ReadAsync(ReadCancellationTokenSource.Token);
                 }
             }
@@ -177,6 +181,8 @@ namespace SDKTemplate
                 int lstLetter = strFromPort.IndexOf("Info", fstLetter + 1);
                 if ((fstLetter >= 0) && (lstLetter > 0)) strFromPort=strFromPort.Substring(fstLetter, lstLetter - fstLetter);
                 Read_Watch.Text = Read_Watch.Text + strFromPort;
+                
+
                 string strLineData;
                 using (StringReader sr = new StringReader(Read_Watch.Text.Trim()))
                 {
@@ -185,17 +191,28 @@ namespace SDKTemplate
 
                     while (!String.IsNullOrEmpty(strLineData))
                     {
-                        //這邊放你的程式邏輯
-                        //...
                         if (strLineData.Contains("HR=") && strLineData.Contains(",") && (Regex.Replace(strLineData, @"[^\d]", String.Empty) != "0"))
                         {
-                            HR_PieChart.Percentage = int.Parse(Regex.Replace(strLineData, @"[^\d]", String.Empty));
                             HR_ProgressBar.Value= int.Parse(Regex.Replace(strLineData, @"[^\d]", String.Empty));
                             HR.Text = Regex.Replace(strLineData, @"[^\d]", String.Empty);
+                            Read_Watch.Text = "";
                         }
-                        
+                        else if (Read_Watch.Text.Contains("disconnect") )
+                        {
+                            Read_Watch.Text = "";
+                            WatchState.Text = "手錶連線狀態：未連線";
+                        }
+                        else if (Read_Watch.Text.Contains("TX characteristic") || (Read_Watch.Text.Contains("BAT=") && Read_Watch.Text.Contains(",")))
+                        {
+                            Read_Watch.Text = "";
+                            WatchState.Text = "手錶連線狀態：已連線";
+                            Nowtime = Regex.Replace(DateTime.Now.ToString("yyyy-MM-dd HH:mm"), @"[^\d]", String.Empty);
+                            await SendToPort("pkt T=" + Nowtime + ",;");
+                        }
+
                         //讀取下一行
                         strLineData = sr.ReadLine();
+                        
                     }
                 }
                
@@ -227,9 +244,9 @@ namespace SDKTemplate
         {
             try
             {
-                if (serialPort != null)
+                if (Watch_serialDevice != null)
                 {
-                    dataWriteObject = new DataWriter(serialPort.OutputStream);
+                    dataWriteObject = new DataWriter(Watch_serialDevice.OutputStream);
 
                     await WriteAsync(sometext);
                 }
@@ -263,11 +280,11 @@ namespace SDKTemplate
         private void Page_Unloaded(object sender, RoutedEventArgs e)
         {
             CancelReadTask();
-            if (serialPort != null)
+            if (Watch_serialDevice != null)
             {
-                serialPort.Dispose();
+                Watch_serialDevice.Dispose();
             }
-            serialPort = null;
+            Watch_serialDevice = null;
         }
         #region get_Temperature
         #region Enumerating Services
@@ -294,7 +311,11 @@ namespace SDKTemplate
 
         private async void ConnectButton_Click()
         {
-
+            
+            if (WatchState.Text.Contains("未連線"))
+            {
+                await SendToPort(instruction[0]);
+            }
 
 
             ConnectButton.IsEnabled = false;
@@ -697,5 +718,204 @@ namespace SDKTemplate
             return mantissa * Math.Pow(10.0, 1);
         }
         #endregion 
+        class DBConnect
+        {
+
+            private MySqlConnection connection;
+            private string server;
+            private string database;
+            private string uid;
+            private string password;
+
+            //Constructor
+            public DBConnect()
+            {
+                Initialize();
+            }
+
+            //Initialize values
+            public void Initialize()
+            {
+                server = "192.168.100.7";
+                database = "hr";
+                uid = "104360082";
+                password = "104360082";
+                string connectionString;
+                connectionString = "SERVER=" + server + ";" + "DATABASE=" +
+                database + ";" + "UID=" + uid + ";" + "PASSWORD=" + password + ";" + "SslMode=None;" + "charset=utf8";
+
+                connection = new MySqlConnection(connectionString);
+            }
+
+            //open connection to database
+            public bool OpenConnection()
+            {
+                try
+                {
+                    connection.Open();
+                    return true;
+                }
+                catch (MySqlException ex)
+                {
+                    //When handling errors, you can your application's response based 
+                    //on the error number.
+                    //The two most common error numbers when connecting are as follows:
+                    //0: Cannot connect to server.
+                    //1045: Invalid user name and/or password.
+                    switch (ex.Number)
+                    {
+                        case 0:
+                            //MessageBox.Show("Cannot connect to server.  Contact administrator");
+                            break;
+
+                        case 1045:
+                            //MessageBox.Show("Invalid username/password, please try again");
+                            break;
+                    }
+                    return false;
+                }
+            }
+
+            //Close connection
+            public bool CloseConnection()
+            {
+                try
+                {
+                    connection.Close();
+                    return true;
+                }
+                catch (MySqlException ex)
+                {
+                    //MessageBox.Show(ex.Message);
+                    return false;
+                }
+            }
+
+            //Insert statement
+            public void Insert(string Time, string mysqlHR)
+            {
+
+                string query = "INSERT INTO hr (Time,HR) VALUES('" + Time + "', '" + mysqlHR + "')";
+
+                //open connection
+                if (this.OpenConnection() == true)
+                {
+                    //create command and assign the query and connection from the constructor
+                    MySqlCommand cmd = new MySqlCommand(query, connection);
+
+                    //Execute command
+                    cmd.ExecuteNonQuery();
+
+                    //close connection
+                    this.CloseConnection();
+                }
+            }
+
+            //Update statement
+            public void Update()
+            {
+                string query = "UPDATE tableinfo SET name='Joe', age='22' WHERE name='John Smith'";
+
+                //Open connection
+                if (this.OpenConnection() == true)
+                {
+                    //create mysql command
+                    MySqlCommand cmd = new MySqlCommand();
+                    //Assign the query using CommandText
+                    cmd.CommandText = query;
+                    //Assign the connection using Connection
+                    cmd.Connection = connection;
+
+                    //Execute query
+                    cmd.ExecuteNonQuery();
+
+                    //close connection
+                    this.CloseConnection();
+                }
+            }
+
+            //Delete statement
+            /*public void Delete()
+            {
+                string query = "DELETE FROM tableinfo WHERE name='" + + "'";
+
+                if (this.OpenConnection() == true)
+                {
+                    MySqlCommand cmd = new MySqlCommand(query, connection);
+                    cmd.ExecuteNonQuery();
+                    this.CloseConnection();
+                }
+            }*/
+
+            //Select statement
+            public List<string>[] Select()
+            {
+                string query = "SELECT * FROM tableinfo";
+
+                //Create a list to store the result
+                List<string>[] list = new List<string>[3];
+                list[0] = new List<string>();
+                list[1] = new List<string>();
+                list[2] = new List<string>();
+
+                //Open connection
+                if (this.OpenConnection() == true)
+                {
+                    //Create Command
+                    MySqlCommand cmd = new MySqlCommand(query, connection);
+                    //Create a data reader and Execute the command
+                    MySqlDataReader dataReader = cmd.ExecuteReader();
+
+                    //Read the data and store them in the list
+                    while (dataReader.Read())
+                    {
+                        list[0].Add(dataReader["id"] + "");
+                        list[1].Add(dataReader["name"] + "");
+                        list[2].Add(dataReader["age"] + "");
+                    }
+
+                    //close Data Reader
+                    dataReader.Close();
+
+                    //close Connection
+                    this.CloseConnection();
+
+                    //return list to be displayed
+                    return list;
+                }
+                else
+                {
+                    return list;
+                }
+            }
+
+            //Count statement
+            public int Count()
+            {
+                string query = "SELECT Count(*) FROM tableinfo";
+                int Count = -1;
+
+                //Open Connection
+                if (this.OpenConnection() == true)
+                {
+                    //Create Mysql Command
+                    MySqlCommand cmd = new MySqlCommand(query, connection);
+
+                    //ExecuteScalar will return one value
+                    Count = int.Parse(cmd.ExecuteScalar() + "");
+
+                    //close Connection
+                    this.CloseConnection();
+
+                    return Count;
+                }
+                else
+                {
+                    return Count;
+                }
+            }
+        }
+
     }
+    
 }

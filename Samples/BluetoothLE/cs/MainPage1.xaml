@@ -31,16 +31,7 @@
     </Page.Resources>
     <ScrollViewer Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="12,10,12,12">
         <StackPanel>
-            <TextBlock Text="Description:" Style="{StaticResource SampleHeaderTextStyle}"/>
-            <TextBlock Style="{StaticResource ScenarioDescriptionTextStyle}" Text="Query services from GATT server"/>
-            <TextBlock TextWrapping="Wrap" Margin="0,10,0,0">
-                This scenario connects to the Bluetooth Low Energy device
-                selected in the "Discover GATT Servers" scenario
-                and communicates with the device.
-            </TextBlock>
-            <TextBlock Style="{StaticResource ListItemTextStyle}" TextWrapping="Wrap" Margin="0,10,0,0">
-                Selected device: <Run Text="{x:Bind rootPage.SelectedBleDeviceName}" FontWeight="Bold"/>
-            </TextBlock>
+            <TextBlock x:Name="WatchState" Text="手錶連線狀態：未連線" Margin="0,10,0,0"/>
             <Button x:Name="ConnectButton" Content="Connect" Click="{x:Bind ConnectButton_Click}" Margin="0,10,0,0"/>
             <ComboBox x:Name="ServiceList" Margin="0,10,0,0" PlaceholderText="Choose a service" Visibility="Collapsed"
                       ItemsSource="{x:Bind ServiceCollection}" DisplayMemberPath="Name"
@@ -64,7 +55,7 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <TextBox x:Name="WriteInputValue" Text="connect F8-CE-C5-80-79-49;" 
+            <TextBox x:Name="WriteInputValue" Text="0" 
                                  Height="30" 
                                  MinWidth="238"
                                  MaxWidth="238"
@@ -72,27 +63,24 @@
                                  Margin="10,30,0,0"
                                  VerticalAlignment="Bottom" HorizontalAlignment="Left"
                                  />
-
-            <charts:PieChart x:Name="HR_PieChart"
-                             Percentage="50"
-                             Radius="50"                            
-                             Segment360Color="Gray"
-                             SegmentColor="LightGreen"
-                             StrokeThickness="10" HorizontalAlignment="Left" />
-
-            <TextBlock x:Name="HR"
-                       Text="70%"
-                       Margin="40,0"
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="心率："
                        VerticalAlignment="Center"
                        HorizontalAlignment="Left"
                        FontWeight="Bold"
                        FontSize="25"
-                       Foreground="Gray" />
+                       Foreground="Gray" Margin="10,0,0,0" />
+                <ProgressBar x:Name="HR_ProgressBar" Value="70" Maximum="130" Width="230" Minimum="0" Height="30" HorizontalAlignment="Left"   >
+                </ProgressBar>
+                <TextBlock x:Name="HR"
+                           Text="70"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Left"
+                           FontWeight="Bold"
+                           FontSize="25"
+                           Foreground="Gray" Margin="10,0,0,0" />
+            </StackPanel>
             <Button x:Name="Send" Content="Send" Click="{x:Bind SendButton_Click}" Margin="0,10,0,0"/>
-            <TextBlock x:Name="Serial_State" Text="手錶連線狀態：" Margin="0,10,0,0"/>
-            <ProgressBar x:Name="HR_ProgressBar" Value="70" Maximum="130" Width="230" Minimum="0" Height="30"  >
-
-            </ProgressBar>
             <TextBlock x:Name="txtPortData" FontSize="11" HorizontalAlignment="Center" Margin="0,20,0,0">No data yet</TextBlock>
             <TextBlock x:Name="txtStatus" FontSize="24" HorizontalAlignment="Center" Margin="0,20,0,0">No data yet</TextBlock>
             <StackPanel Orientation="Horizontal" Margin="0,30" >

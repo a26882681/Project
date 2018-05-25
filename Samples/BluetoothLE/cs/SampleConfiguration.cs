@@ -29,7 +29,7 @@ namespace SDKTemplate
 
         };
 
-        public string SelectedBleDeviceId;
+        public string SelectedBleDeviceId, SelectedBleDeviceId1, SelectedBleDeviceId2;
         public string SelectedBleDeviceName = "No device selected";
     }
 

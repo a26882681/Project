@@ -100,6 +100,7 @@
     <Compile Include="..\..\..\SharedContent\cs\AssemblyInfo.cs">
       <Link>Properties\AssemblyInfo.cs</Link>
     </Compile>
+    <Compile Include="CodeFile1.cs" />
     <Compile Include="Constants.cs" />
     <Compile Include="..\..\..\SharedContent\cs\DispatcherTaskExtensions.cs">
       <Link>DispatcherTaskExtensions.cs</Link>

@@ -28,6 +28,7 @@ using System.Threading;
 using Windows.System.Threading;
 using System.Text.RegularExpressions;
 using MySql.Data.MySqlClient;
+using Windows.UI;
 
 // created using this example https://github.com/ms-iot/samples/tree/develop/SerialSample/
 
@@ -38,19 +39,26 @@ namespace SDKTemplate
     {
         private MainPage rootPage = MainPage.Current;
         private ObservableCollection<BluetoothLEAttributeDisplay> ServiceCollection = new ObservableCollection<BluetoothLEAttributeDisplay>();
+                                                                  
         private ObservableCollection<BluetoothLEAttributeDisplay> CharacteristicCollection = new ObservableCollection<BluetoothLEAttributeDisplay>();
 
-        private BluetoothLEDevice bluetoothLeDevice = null;
-        private GattCharacteristic selectedCharacteristic;
+        private BluetoothLEDevice bluetoothLeDevice = null,
+                                  bluetoothLeDevice1 = null,
+                                  bluetoothLeDevice2 = null;
+        private GattCharacteristic selectedCharacteristic, selectedCharacteristic1, selectedCharacteristic2;
 
         // Only one registered characteristic at a time.
-        private GattCharacteristic registeredCharacteristic;
+        private GattCharacteristic registeredCharacteristic, registeredCharacteristic1, registeredCharacteristic2;
         private GattPresentationFormat presentationFormat;
 
         private CancellationTokenSource ReadCancellationTokenSource;
-        private SerialDevice Arduino_serialDevice=null;
+        private SerialDevice Arduino_serialDevice = null;
         private SerialDevice Watch_serialDevice = null;
-        string[] instruction = { "connect F8-CE-C5-80-79-49;", "disconnect;", "cmd.pair" , "menu.g", "icon.g", "get.g", "get.hr", "mode.g01", "mode.g02", "mode.g03", "mode.g04" };
+        string[] instruction = { "connect F8-CE-C5-80-79-49;", "disconnect;", "cmd.pair", "menu.g", "icon.g", "get.g", "get.hr", "mode.g01", "mode.g02", "mode.g03", "mode.g04" };
+        double T1, T2, T3;
+        int[] X_Axis = new int[2], Y_Axis = new int[2], Z_Axis = new int[2];
+        int  Not_moving_count = 0, Moving_count = 0;
+        Boolean G_count=false;
         DataWriter dataWriteObject = null;
         DataReader dataReaderObject = null;
         DBConnect db = new DBConnect();
@@ -64,33 +72,39 @@ namespace SDKTemplate
         public MainPage1()
         {
             InitializeComponent();
-            rootPage.SelectedBleDeviceId = "BluetoothLE#BluetoothLE5c:f3:70:8c:57:02-d1:82:80:8d:13:18";
-            rootPage.SelectedBleDeviceName = "ATBF-1000";          
+            rootPage.SelectedBleDeviceId = "BluetoothLE#BluetoothLE5c:f3:70:8c:57:02-c2:1a:1b:8e:4b:53";
+            rootPage.SelectedBleDeviceId1 = "BluetoothLE#BluetoothLE5c:f3:70:8c:57:02-ec:9f:e8:f0:41:57";
+            rootPage.SelectedBleDeviceId2 = "BluetoothLE#BluetoothLE5c:f3:70:8c:57:02-d1:82:80:8d:13:18";
             
+            rootPage.SelectedBleDeviceName = "ATBF-1000";
         }
-        protected override void OnNavigatedTo(NavigationEventArgs e)
-        {
-            if (string.IsNullOrEmpty(rootPage.SelectedBleDeviceId))
-            {
-                ConnectButton.IsEnabled = false;
-            }
-        }
+        
 
         protected override async void OnNavigatedFrom(NavigationEventArgs e)
         {
-            var success = await ClearBluetoothLEDeviceAsync();
+            var success = await ClearBluetoothLEDeviceAsync(0, subscribedForNotifications, registeredCharacteristic);
+            if (!success)
+            {
+                rootPage.NotifyUser("Error: Unable to reset app state", NotifyType.ErrorMessage);
+            }
+            success = await ClearBluetoothLEDeviceAsync(1, subscribedForNotifications, registeredCharacteristic);
+            if (!success)
+            {
+                rootPage.NotifyUser("Error: Unable to reset app state", NotifyType.ErrorMessage);
+            }
+            success = await ClearBluetoothLEDeviceAsync(2, subscribedForNotifications, registeredCharacteristic);
             if (!success)
             {
                 rootPage.NotifyUser("Error: Unable to reset app state", NotifyType.ErrorMessage);
             }
         }
         #endregion
-
+        #region watch_connect
         private async void SendButton_Click()
         {
-            if(int.Parse(WriteInputValue.Text)<2) await SendToPort(instruction[int.Parse(WriteInputValue.Text)]);
-            else await SendToPort("pkt " + instruction[int.Parse(WriteInputValue.Text)] + ",;" );
-
+            if (int.Parse(WriteInputValue.Text) < 2) await SendToPort(instruction[int.Parse(WriteInputValue.Text)]);
+            else await SendToPort("pkt " + instruction[int.Parse(WriteInputValue.Text)] + ",;");
+            /*
             DateTime myDate = DateTime.Now;
             string myDateString = myDate.ToString("yyyy-MM-dd HH:mm:ss");
             Random crandom = new Random();
@@ -98,43 +112,78 @@ namespace SDKTemplate
             y = crandom.Next(70, 140);
             string varString = Convert.ToString(y);
             db.Insert(myDateString, varString);
+            */
         }
 
 
         private async void Page_Loaded(object sender, RoutedEventArgs e)
         {
             string qFilter = SerialDevice.GetDeviceSelector("COM3");
+
             DeviceInformationCollection devices = await DeviceInformation.FindAllAsync(qFilter);
-
-            if (devices.Any())
+            try
             {
-                string deviceId = devices.First().Id;
-                await OpenPort(deviceId);                             
+                if (devices.Any())
+                {
+                    string deviceId = devices.First().Id;
+                    await OpenPort(deviceId);
+                }
             }
-
-            ReadCancellationTokenSource = new CancellationTokenSource();
-            while (Watch_serialDevice!=null)
+            catch(Exception ex) { }
+            qFilter = SerialDevice.GetDeviceSelector("COM6");
+            devices= await DeviceInformation.FindAllAsync(qFilter);
+            try
             {
-                await Listen();                
+                if (devices.Any())
+                {
+                    string deviceId = devices.First().Id;
+                    await OpenPort(deviceId);
+                }
+            }
+            catch (Exception ex) { }
+            ReadCancellationTokenSource = new CancellationTokenSource();
+            while (Watch_serialDevice != null)
+            {
+                await Listen();
             }
 
         }
 
         private async Task OpenPort(string deviceId)
         {
-            Watch_serialDevice = await SerialDevice.FromIdAsync(deviceId);
-
-            if (Watch_serialDevice != null)
+            if(deviceId.Contains("VID_1366"))
             {
-                Watch_serialDevice.WriteTimeout = TimeSpan.FromMilliseconds(1000);
-                Watch_serialDevice.ReadTimeout = TimeSpan.FromMilliseconds(1000);
-                Watch_serialDevice.BaudRate = 115200;
-                Watch_serialDevice.Parity = SerialParity.None;
-                Watch_serialDevice.StopBits = SerialStopBitCount.One;
-                Watch_serialDevice.DataBits = 8;               
-                txtStatus.Text = "Serial port configured successfully";
-                await SendToPort("pkt " + instruction[2] + ",;");
+                Watch_serialDevice = await SerialDevice.FromIdAsync(deviceId);
+
+                if (Watch_serialDevice != null)
+                {
+                    Watch_serialDevice.WriteTimeout = TimeSpan.FromMilliseconds(1000);
+                    Watch_serialDevice.ReadTimeout = TimeSpan.FromMilliseconds(1000);
+                    Watch_serialDevice.BaudRate = 115200;
+                    Watch_serialDevice.Parity = SerialParity.None;
+                    Watch_serialDevice.StopBits = SerialStopBitCount.One;
+                    Watch_serialDevice.DataBits = 8;
+                    txtStatus.Text = "Serial port configured successfully";
+                    await SendToPort("pkt " + instruction[2] + ",;");
+                }
             }
+            else
+            {
+                Arduino_serialDevice = await SerialDevice.FromIdAsync(deviceId);
+
+                if (Arduino_serialDevice != null)
+                {
+                    Arduino_serialDevice.WriteTimeout = TimeSpan.FromMilliseconds(1000);
+                    Arduino_serialDevice.ReadTimeout = TimeSpan.FromMilliseconds(1000);
+                    Arduino_serialDevice.BaudRate = 9600;
+                    Arduino_serialDevice.Parity = SerialParity.None;
+                    Arduino_serialDevice.StopBits = SerialStopBitCount.One;
+                    Arduino_serialDevice.DataBits = 8;
+                    ArduinoState.Text = "Arduino藍芽：已連線";
+                    ArduinoState_LED.Fill = new SolidColorBrush(Colors.LightGreen);
+                }
+            }
+
         }
 
         private async Task Listen()
@@ -166,7 +215,9 @@ namespace SDKTemplate
         {
             Task<UInt32> loadAsyncTask;
 
-            uint ReadBufferLength = 6;  // only when this buffer would be full next code would be executed
+            Boolean Not_moving;
+
+            uint ReadBufferLength = 5;  // only when this buffer would be full next code would be executed
 
             dataReaderObject.InputStreamOptions = InputStreamOptions.Partial;
 
@@ -179,43 +230,87 @@ namespace SDKTemplate
                 string strFromPort = dataReaderObject.ReadString(bytesRead);
                 int fstLetter = strFromPort.IndexOf("Info");
                 int lstLetter = strFromPort.IndexOf("Info", fstLetter + 1);
-                if ((fstLetter >= 0) && (lstLetter > 0)) strFromPort=strFromPort.Substring(fstLetter, lstLetter - fstLetter);
+                if ((fstLetter >= 0) && (lstLetter > 0)) strFromPort = strFromPort.Substring(fstLetter, lstLetter - fstLetter);
                 Read_Watch.Text = Read_Watch.Text + strFromPort;
-                
-
                 string strLineData;
                 using (StringReader sr = new StringReader(Read_Watch.Text.Trim()))
                 {
-                    //讀取第一行
+                    char[] delimit = new char[] { '\n' };
+                    String[] lines = Read_Watch.Text.Split(delimit);
                     strLineData = sr.ReadLine();
-
                     while (!String.IsNullOrEmpty(strLineData))
                     {
                         if (strLineData.Contains("HR=") && strLineData.Contains(",") && (Regex.Replace(strLineData, @"[^\d]", String.Empty) != "0"))
                         {
-                            HR_ProgressBar.Value= int.Parse(Regex.Replace(strLineData, @"[^\d]", String.Empty));
+                            HR_ProgressBar.Value = int.Parse(Regex.Replace(strLineData, @"[^\d]", String.Empty));
                             HR.Text = Regex.Replace(strLineData, @"[^\d]", String.Empty);
-                            Read_Watch.Text = "";
+                            Read_Watch.Text = lines[lines.Length - 1];
                         }
-                        else if (Read_Watch.Text.Contains("disconnect") )
+                        else if (strLineData.Contains("G=") && strLineData.Contains(","))
                         {
-                            Read_Watch.Text = "";
-                            WatchState.Text = "手錶連線狀態：未連線";
+                            strLineData = Regex.Replace(strLineData, @"[^\d]", String.Empty);
+                            X.Text = "";
+                            Y.Text = "";
+                            Z.Text = "";
+                            string[] substrings = Regex.Split(strLineData, "");
+                            for (int ctr = 0; ctr < substrings.Length; ctr++)
+                            {
+                                if (ctr < 5) X.Text = X.Text + substrings[ctr];
+                                else if (ctr < 9) Y.Text = Y.Text + substrings[ctr];
+                                else Z.Text = Z.Text + substrings[ctr];
+                            }
+                            if (G_count)
+                            {
+                                X_Axis[1] = int.Parse(X.Text);
+                                Y_Axis[1] = int.Parse(Y.Text);
+                                Z_Axis[1] = int.Parse(Z.Text);
+                                G_count = false;
+                            }
+                            else
+                            {
+                                X_Axis[0] = int.Parse(X.Text);
+                                Y_Axis[0] = int.Parse(Y.Text);
+                                Z_Axis[0] = int.Parse(Z.Text);
+                                G_count = true;
+                            }
+
+                            if (Math.Abs(X_Axis[1] - X_Axis[0]) > 50) Not_moving = false;
+                            else if (Math.Abs(Y_Axis[1] - Y_Axis[0]) > 50) Not_moving = false;
+                            else if (Math.Abs(Z_Axis[1] - Z_Axis[0]) > 50) Not_moving = false;
+                            else Not_moving = true;
+
+                            if (Not_moving)
+                            {
+                                Not_moving_count++;
+                                Moving_count = 0;
+                            }
+                            else
+                            {
+                                Moving_count++;
+                                Not_moving_count = 0;
+                            }
+                            if (Moving_count > 10) txtPortData.Text = "移動";
+                            else if (Not_moving_count >10) txtPortData.Text = "未移動";
+                        }
+                        else if (Read_Watch.Text.Contains("disconnect"))
+                        {
+                            WatchState.Text = "手錶：未連線";
+                            WatchState_LED.Fill = new SolidColorBrush(Colors.DarkRed);
+                            Read_Watch.Text = lines[lines.Length - 1];
                         }
                         else if (Read_Watch.Text.Contains("TX characteristic") || (Read_Watch.Text.Contains("BAT=") && Read_Watch.Text.Contains(",")))
                         {
-                            Read_Watch.Text = "";
-                            WatchState.Text = "手錶連線狀態：已連線";
+                            WatchState.Text = "手錶：已連線";
                             Nowtime = Regex.Replace(DateTime.Now.ToString("yyyy-MM-dd HH:mm"), @"[^\d]", String.Empty);
+                            WatchState_LED.Fill = new SolidColorBrush(Colors.LightGreen);
                             await SendToPort("pkt T=" + Nowtime + ",;");
+                            Read_Watch.Text = lines[lines.Length - 1];
                         }
-
-                        //讀取下一行
                         strLineData = sr.ReadLine();
-                        
                     }
+
                 }
-               
+
                 txtStatus.Text = "Read at " + DateTime.Now.ToString(System.Globalization.CultureInfo.CurrentUICulture.DateTimeFormat.LongTimePattern);
             }
         }
@@ -286,14 +381,15 @@ namespace SDKTemplate
             }
             Watch_serialDevice = null;
         }
+#endregion
         #region get_Temperature
         #region Enumerating Services
-        private async Task<bool> ClearBluetoothLEDeviceAsync()
+        private async Task<bool> ClearBluetoothLEDeviceAsync(int i,bool subscribedForNotifications_, GattCharacteristic registeredCharacteristic_)
         {
-            if (subscribedForNotifications)
+            if (subscribedForNotifications_)
             {
                 // Need to clear the CCCD from the remote device so we stop receiving notifications
-                var result = await registeredCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.None);
+                var result = await registeredCharacteristic_.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.None);
                 if (result != GattCommunicationStatus.Success)
                 {
                     return false;
@@ -301,38 +397,55 @@ namespace SDKTemplate
                 else
                 {
                     selectedCharacteristic.ValueChanged -= Characteristic_ValueChanged;
-                    subscribedForNotifications = false;
+                    subscribedForNotifications_ = false;
+                    if (i == 0) subscribedForNotifications = subscribedForNotifications_;
                 }
             }
-            bluetoothLeDevice?.Dispose();
-            bluetoothLeDevice = null;
+            if (i == 0)
+            {
+                bluetoothLeDevice?.Dispose();
+                bluetoothLeDevice = null;
+            }
+            else if(i==1)
+            {
+                bluetoothLeDevice1?.Dispose();
+                bluetoothLeDevice1 = null;
+            }
+            else if(i==2)
+            {
+                bluetoothLeDevice2?.Dispose();
+                bluetoothLeDevice2 = null;
+            }
+            
             return true;
         }
 
-        private async void ConnectButton_Click()
+        private async void ConnectButton_Click1()
+        {
+            ConnectButton_Click(bluetoothLeDevice, rootPage.SelectedBleDeviceId,0);
+            await SendToPort(instruction[0]);
+        }
+        private  void ConnectButton_Click2()
         {
             
-            if (WatchState.Text.Contains("未連線"))
-            {
-                await SendToPort(instruction[0]);
-            }
+        }
 
 
-            ConnectButton.IsEnabled = false;
 
-            if (!await ClearBluetoothLEDeviceAsync())
-            {
-                rootPage.NotifyUser("Error: Unable to reset state, try again.", NotifyType.ErrorMessage);
-                ConnectButton.IsEnabled = false;
-                return;
-            }
-
+        private  void ConnectButton_Click3()
+        {
+            ConnectButton_Click(bluetoothLeDevice2, rootPage.SelectedBleDeviceId2, 2);
+        }
+        private async void ConnectButton_Click(BluetoothLEDevice bluetoothLeDevice_,string SelectedBleDeviceId_,int i)
+        {     
+            
+            ServiceCollection.Clear();         
             try
             {
                 // BT_Code: BluetoothLEDevice.FromIdAsync must be called from a UI thread because it may prompt for consent.
-                bluetoothLeDevice = await BluetoothLEDevice.FromIdAsync(rootPage.SelectedBleDeviceId);
+                bluetoothLeDevice_ = await BluetoothLEDevice.FromIdAsync(SelectedBleDeviceId_);
 
-                if (bluetoothLeDevice == null)
+                if (bluetoothLeDevice_ == null)
                 {
                     rootPage.NotifyUser("Failed to connect to device.", NotifyType.ErrorMessage);
                 }
@@ -342,41 +455,67 @@ namespace SDKTemplate
                 rootPage.NotifyUser("Bluetooth radio is not on.", NotifyType.ErrorMessage);
             }
 
-            if (bluetoothLeDevice != null)
+            if (bluetoothLeDevice_ != null)
             {
                 // Note: BluetoothLEDevice.GattServices property will return an empty list for unpaired devices. For all uses we recommend using the GetGattServicesAsync method.
                 // BT_Code: GetGattServicesAsync returns a list of all the supported services of the device (even if it's not paired to the system).
                 // If the services supported by the device are expected to change during BT usage, subscribe to the GattServicesChanged event.
-                GattDeviceServicesResult result = await bluetoothLeDevice.GetGattServicesAsync(BluetoothCacheMode.Uncached);
+                GattDeviceServicesResult result = await bluetoothLeDevice_.GetGattServicesAsync(BluetoothCacheMode.Uncached);
 
                 if (result.Status == GattCommunicationStatus.Success)
                 {
                     var services = result.Services;
-                    rootPage.NotifyUser(String.Format("Found {0} services", services.Count), NotifyType.StatusMessage);
                     foreach (var service in services)
                     {
                         ServiceCollection.Add(new BluetoothLEAttributeDisplay(service));
                     }
-                    ConnectButton.Visibility = Visibility.Collapsed;
-                    ServiceList_SelectionChanged();
+                    if (i == 0)
+                    {
+                        Temperature1_State.Text = "體溫計(腋溫)：已連線";
+                        Temperature1_State_LED.Fill = new SolidColorBrush(Colors.LightGreen);
+                    }
+                    else if (i == 1)
+                    {
+                        Temperature2_State.Text = "體溫計(臉)：已連線";
+                        Temperature2_State_LED.Fill = new SolidColorBrush(Colors.LightGreen);
+                    }
+                    else if (i == 2)
+                    {
+                        Temperature3_State.Text = "體溫計(室溫)：已連線";
+                        Temperature3_State_LED.Fill = new SolidColorBrush(Colors.LightGreen);
+                    }
+
+                    ServiceList_SelectionChanged(i);
                 }
                 else
                 {
-                    rootPage.NotifyUser("Device unreachable", NotifyType.ErrorMessage);
+                    if (i == 0)
+                    {
+                        Temperature1_State.Text = "體溫計(腋溫)：未連線";
+                        Temperature1_State_LED.Fill = new SolidColorBrush(Colors.DarkRed);
+                    }
+                    else if (i == 1)
+                    {
+                        Temperature2_State.Text = "體溫計(臉)：未連線";
+                        Temperature2_State_LED.Fill = new SolidColorBrush(Colors.DarkRed);
+                    }
+                    else if (i == 2)
+                    {
+                        Temperature3_State.Text = "體溫計(室溫)：未連線";
+                        Temperature3_State_LED.Fill = new SolidColorBrush(Colors.DarkRed);
+                    }
                 }
             }
-            ConnectButton.IsEnabled = true;
         }
         #endregion
 
         #region Enumerating Characteristics
-        private async void ServiceList_SelectionChanged()
+        private async void ServiceList_SelectionChanged(int i)
         {
             ServiceList.SelectedIndex = 3;
             var attributeInfoDisp = (BluetoothLEAttributeDisplay)ServiceList.SelectedItem;
 
             CharacteristicCollection.Clear();
-            RemoveValueChangedHandler();
 
             IReadOnlyList<GattCharacteristic> characteristics = null;
             try
@@ -422,7 +561,7 @@ namespace SDKTemplate
             foreach (GattCharacteristic c in characteristics)
             {
                 CharacteristicCollection.Add(new BluetoothLEAttributeDisplay(c));
-                CharacteristicList_SelectionChanged();
+                CharacteristicList_SelectionChanged(i);
             }
 
         }
@@ -430,27 +569,30 @@ namespace SDKTemplate
 
         private void AddValueChangedHandler()
         {
-            ValueChangedSubscribeToggle.Content = "Unsubscribe from value changes";
-            if (!subscribedForNotifications)
-            {
+            
                 registeredCharacteristic = selectedCharacteristic;
                 registeredCharacteristic.ValueChanged += Characteristic_ValueChanged;
                 subscribedForNotifications = true;
-            }
+            
         }
-
-        private void RemoveValueChangedHandler()
+        private void AddValueChangedHandler1()
         {
-            ValueChangedSubscribeToggle.Content = "Subscribe to value changes";
-            if (subscribedForNotifications)
-            {
-                registeredCharacteristic.ValueChanged -= Characteristic_ValueChanged;
-                registeredCharacteristic = null;
-                subscribedForNotifications = false;
-            }
+            
+                registeredCharacteristic1 = selectedCharacteristic;
+                registeredCharacteristic1.ValueChanged += Characteristic_ValueChanged1;
+                subscribedForNotifications = true;
+            
+        }
+        private void AddValueChangedHandler2()
+        {
+            
+                registeredCharacteristic2 = selectedCharacteristic;
+                registeredCharacteristic2.ValueChanged += Characteristic_ValueChanged2;
+                subscribedForNotifications = true;
+            
         }
 
-        private async void CharacteristicList_SelectionChanged()
+        private async void CharacteristicList_SelectionChanged(int i)
         {
             selectedCharacteristic = null;
             CharacteristicList.SelectedIndex = 0;
@@ -495,7 +637,7 @@ namespace SDKTemplate
 
             // Enable/disable operations based on the GattCharacteristicProperties.
             EnableCharacteristicPanels(selectedCharacteristic.CharacteristicProperties);
-            ValueChangedSubscribeToggle_Click();
+            ValueChangedSubscribeToggle_Click(i);
         }
 
         private void SetVisibility(UIElement element, bool visible)
@@ -508,8 +650,6 @@ namespace SDKTemplate
             // BT_Code: Hide the controls which do not apply to this characteristic.
             SetVisibility(CharacteristicReadButton, properties.HasFlag(GattCharacteristicProperties.Read));
 
-            SetVisibility(ValueChangedSubscribeToggle, properties.HasFlag(GattCharacteristicProperties.Indicate) ||
-                                                       properties.HasFlag(GattCharacteristicProperties.Notify));
 
         }
 
@@ -529,10 +669,9 @@ namespace SDKTemplate
         }
 
         private bool subscribedForNotifications = false;
-        private async void ValueChangedSubscribeToggle_Click()
+        private async void ValueChangedSubscribeToggle_Click(int i)
         {
-            if (!subscribedForNotifications)
-            {
+            
                 // initialize status
                 GattCommunicationStatus status = GattCommunicationStatus.Unreachable;
                 var cccdValue = GattClientCharacteristicConfigurationDescriptorValue.None;
@@ -552,49 +691,39 @@ namespace SDKTemplate
                     // We receive them in the ValueChanged event handler.
                     status = await selectedCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(cccdValue);
 
-                    if (status == GattCommunicationStatus.Success)
+                if (status == GattCommunicationStatus.Success)
+                {
+
+                    if (i == 0)
                     {
                         AddValueChangedHandler();
-                        rootPage.NotifyUser("Successfully subscribed for value changes", NotifyType.StatusMessage);
+                        ConnectButton_Click(bluetoothLeDevice1, rootPage.SelectedBleDeviceId1, 1);
+                    }
+                    else if (i == 1)
+                    {
+                        AddValueChangedHandler1();
+                        ConnectButton_Click(bluetoothLeDevice2, rootPage.SelectedBleDeviceId2, 2);
                     }
                     else
                     {
-                        rootPage.NotifyUser($"Error registering for value changes: {status}", NotifyType.ErrorMessage);
+                        AddValueChangedHandler2();
+                        
                     }
+                    
+                    rootPage.NotifyUser("Successfully subscribed for value changes", NotifyType.StatusMessage);
+                }
+                else
+                {
+                    rootPage.NotifyUser($"Error registering for value changes: {status}", NotifyType.ErrorMessage);
+                }
                 }
                 catch (UnauthorizedAccessException ex)
                 {
                     // This usually happens when a device reports that it support indicate, but it actually doesn't.
                     rootPage.NotifyUser(ex.Message, NotifyType.ErrorMessage);
                 }
-            }
-            else
-            {
-                try
-                {
-                    // BT_Code: Must write the CCCD in order for server to send notifications.
-                    // We receive them in the ValueChanged event handler.
-                    // Note that this sample configures either Indicate or Notify, but not both.
-                    var result = await
-                            selectedCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(
-                                GattClientCharacteristicConfigurationDescriptorValue.None);
-                    if (result == GattCommunicationStatus.Success)
-                    {
-                        subscribedForNotifications = false;
-                        RemoveValueChangedHandler();
-                        rootPage.NotifyUser("Successfully un-registered for notifications", NotifyType.StatusMessage);
-                    }
-                    else
-                    {
-                        rootPage.NotifyUser($"Error un-registering for notifications: {result}", NotifyType.ErrorMessage);
-                    }
-                }
-                catch (UnauthorizedAccessException ex)
-                {
-                    // This usually happens when a device reports that it support notify, but it actually doesn't.
-                    rootPage.NotifyUser(ex.Message, NotifyType.ErrorMessage);
-                }
-            }
+            
+            
         }
 
         private async void Characteristic_ValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
@@ -602,9 +731,31 @@ namespace SDKTemplate
             // BT_Code: An Indicate or Notify reported that the value has changed.
             // Display the new value with a timestamp.
             var newValue = FormatValueByPresentation(args.CharacteristicValue, presentationFormat);
-            var message = $"Value at {DateTime.Now:hh:mm:ss.FFF}: {newValue}";
+            var message = $"Value at {DateTime.Now:hh:mm:ss.FFF}: Temperature: {newValue} °C";
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal,
                 () => CharacteristicLatestValue.Text = message);
+            T1 = double.Parse(newValue);
+        }
+        private async void Characteristic_ValueChanged1(GattCharacteristic sender, GattValueChangedEventArgs args)
+        {
+            // BT_Code: An Indicate or Notify reported that the value has changed.
+            // Display the new value with a timestamp.
+            var newValue = FormatValueByPresentation(args.CharacteristicValue, presentationFormat);
+            var message = $"Value at {DateTime.Now:hh:mm:ss.FFF}: Temperature: {newValue} °C";
+            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal,
+                () => CharacteristicLatestValue1.Text = message);
+            T2 = double.Parse(newValue);
+        }
+        private async void Characteristic_ValueChanged2(GattCharacteristic sender, GattValueChangedEventArgs args)
+        {
+            // BT_Code: An Indicate or Notify reported that the value has changed.
+            // Display the new value with a timestamp.
+            var newValue = FormatValueByPresentation(args.CharacteristicValue, presentationFormat);
+            var message = $"Value at {DateTime.Now:hh:mm:ss.FFF}: Temperature: {newValue} °C";
+            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal,
+                () => CharacteristicLatestValue2.Text = message);
+            T3 = double.Parse(newValue);
+            rootPage.NotifyUser(String.Format(" {0} {1} {2} ", T1,T2,T3), NotifyType.StatusMessage);
         }
 
         private string FormatValueByPresentation(IBuffer buffer, GattPresentationFormat format)
@@ -642,7 +793,7 @@ namespace SDKTemplate
                 {
                     try
                     {
-                        return "Temperature: " + (ConvertTemperatureData(data) / 1000).ToString() + "°C";
+                        return (ConvertTemperatureData(data) / 1000).ToString();
                     }
                     catch (ArgumentException)
                     {
@@ -917,5 +1068,5 @@ namespace SDKTemplate
         }
 
     }
-    
+
 }
